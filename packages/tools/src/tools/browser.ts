@@ -126,6 +126,7 @@ function parseCreateSessionOptions(args: Record<string, unknown>): CreateSession
 async function requestSession(
 	options: CreateSessionOptions,
 	apiKey: string,
+	projectId?: string,
 ): Promise<BrowserSessionResponse> {
 	void options.startingUrl;
 	const response = await fetch(`${BROWSERBASE_API_BASE}/sessions`, {
@@ -135,7 +136,7 @@ async function requestSession(
 			"x-bb-api-key": apiKey,
 		},
 		body: JSON.stringify({
-			projectId: undefined,
+			projectId,
 			browserSettings: {
 				viewport: {
 					width: options.viewportWidth,
@@ -252,7 +253,10 @@ export const browserCloseSessionDefinition: LLMToolDefinition = {
 	},
 };
 
-export function createBrowserExecutors(browserbaseApiKey: string): {
+export function createBrowserExecutors(
+	browserbaseApiKey: string,
+	browserbaseProjectId?: string,
+): {
 	browser_create_session: ToolExecutor;
 	browser_download_files: ToolExecutor;
 	browser_close_session: ToolExecutor;
@@ -264,7 +268,7 @@ export function createBrowserExecutors(browserbaseApiKey: string): {
 		}
 
 		try {
-			const session = await requestSession(options, browserbaseApiKey);
+			const session = await requestSession(options, browserbaseApiKey, browserbaseProjectId);
 			return { output: session, durationMs: 0 };
 		} catch (err) {
 			return {

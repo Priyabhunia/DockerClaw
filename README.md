@@ -115,3 +115,13 @@ bun run typecheck
 ## License
 
 [MIT](LICENSE)
+
+
+
+# Additional Details
+if you are running the bot in Docker, code changes are not applied until you rebuild/restart the container
+this repo copies source code into the Docker image during build, it does not live-read your local files
+so after code changes, the right command is usually:
+```
+docker compose -f docker/docker-compose.selfhosted.yml up -d --build bot
+```

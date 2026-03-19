@@ -33,7 +33,7 @@ import { type ChatOptions, type LLMGateway, extractText } from "./gateway.js";
 import { type PromptContext, buildSystemPrompt } from "./prompt.js";
 import { isContextOverflow } from "./retry.js";
 
-const MAX_TOOL_ROUNDS = 20;
+const MAX_TOOL_ROUNDS = 50;
 
 const SEND_TOOL_NAMES = new Set([
 	"coworker_send_telegram_message",
@@ -539,6 +539,59 @@ export class AgentRunner {
 		}
 	}
 
+	private async generateBestEffortFinalAnswer(
+		messages: LLMMessage[],
+		modelOverride: string | undefined,
+		agentRunId: string,
+		reason: "tool_round_limit" | "context_limit",
+	): Promise<{
+		responseText: string;
+		inputTokens: number;
+		outputTokens: number;
+		costCents: number;
+	}> {
+		const followUp =
+			reason === "tool_round_limit"
+				? "You have reached the maximum tool round limit."
+				: "You cannot use any more tools because the context is too large.";
+
+		const finalMessages: LLMMessage[] = [
+			...messages,
+			{
+				role: "user",
+				content:
+					`${followUp} Do not call any more tools. Using only the information already ` +
+					`gathered in the conversation and tool results above, produce the best possible ` +
+					`final answer now. If the result is partial, clearly say what is confirmed, what is ` +
+					`still uncertain, and what was already tried.`,
+			},
+		];
+
+		try {
+			const response = await this.llm.chat(finalMessages, { model: modelOverride });
+			return {
+				responseText:
+					extractText(response.content) ||
+					"I could not produce a final answer from the partial results collected so far.",
+				inputTokens: response.inputTokens,
+				outputTokens: response.outputTokens,
+				costCents: response.costCents,
+			};
+		} catch (error) {
+			this.logger.warn(
+				{ agentRunId, err: error, reason },
+				"Failed to generate best-effort final answer",
+			);
+			return {
+				responseText:
+					"I stopped before completion and could not synthesize a final answer from the partial results.",
+				inputTokens: 0,
+				outputTokens: 0,
+				costCents: 0,
+			};
+		}
+	}
+
 	private async execute(
 		agentRunId: string,
 		threadId: string,
@@ -571,13 +624,18 @@ export class AgentRunner {
 			);
 
 			if (!response) {
+				const finalAnswer = await this.generateBestEffortFinalAnswer(
+					messages,
+					modelOverride,
+					agentRunId,
+					"context_limit",
+				);
 				return {
-					responseText:
-						"I hit the context limit while working on your request. Please send a follow-up message so I can continue with a fresh context.",
+					responseText: finalAnswer.responseText,
 					messageSent,
-					inputTokens: totalInputTokens,
-					outputTokens: totalOutputTokens,
-					costCents: totalCostCents,
+					inputTokens: totalInputTokens + finalAnswer.inputTokens,
+					outputTokens: totalOutputTokens + finalAnswer.outputTokens,
+					costCents: totalCostCents + finalAnswer.costCents,
 				};
 			}
 
@@ -631,13 +689,18 @@ export class AgentRunner {
 		}
 
 		this.logger.warn({ agentRunId }, "Exceeded maximum tool rounds");
+		const finalAnswer = await this.generateBestEffortFinalAnswer(
+			messages,
+			modelOverride,
+			agentRunId,
+			"tool_round_limit",
+		);
 		return {
-			responseText:
-				"Hit the maximum number of tool rounds without completing the task. Here's what I've done so far — let me know if you'd like me to continue.",
+			responseText: finalAnswer.responseText,
 			messageSent,
-			inputTokens: totalInputTokens,
-			outputTokens: totalOutputTokens,
-			costCents: totalCostCents,
+			inputTokens: totalInputTokens + finalAnswer.inputTokens,
+			outputTokens: totalOutputTokens + finalAnswer.outputTokens,
+			costCents: totalCostCents + finalAnswer.costCents,
 		};
 	}
 

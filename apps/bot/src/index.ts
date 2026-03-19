@@ -65,6 +65,8 @@ function createToolBackend(config: ReturnType<typeof loadConfig>): {
 		telegramToken: config.TELEGRAM_BOT_TOKEN,
 		githubToken: config.GITHUB_TOKEN,
 		browserbaseApiKey: config.BROWSERBASE_API_KEY,
+		browserbaseProjectId: config.BROWSERBASE_PROJECT_ID,
+		linkupApiKey: config.LINKUP_API_KEY,
 		context7BaseUrl: config.CONTEXT7_BASE_URL,
 		searchApiKey: config.SEARCH_API_KEY,
 		imagenApiKey: config.IMAGEN_API_KEY,

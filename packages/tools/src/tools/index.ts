@@ -97,6 +97,8 @@ export interface RegistryConfig {
 	telegramToken?: string;
 	githubToken?: string;
 	browserbaseApiKey?: string;
+	browserbaseProjectId?: string;
+	linkupApiKey?: string;
 	context7BaseUrl?: string;
 	searchApiKey?: string;
 	imagenApiKey?: string;
@@ -127,16 +129,20 @@ export function createNativeRegistry(config: RegistryConfig = {}): ToolRegistry 
 			"quick_ai_search",
 			quickAiSearchDefinition,
 			createQuickAiSearchExecutor({
+				linkupApiKey: config.linkupApiKey,
 				searchApiKey: config.searchApiKey,
 				llmProvider: config.llmProvider,
 				model: config.defaultModel,
 			}),
 		);
-	} else if (config.searchApiKey) {
+	} else if (config.linkupApiKey || config.searchApiKey) {
 		registry.register(
 			"quick_ai_search",
 			quickAiSearchDefinition,
-			createQuickAiSearchExecutor({ searchApiKey: config.searchApiKey }),
+			createQuickAiSearchExecutor({
+				linkupApiKey: config.linkupApiKey,
+				searchApiKey: config.searchApiKey,
+			}),
 		);
 	}
 
@@ -282,7 +288,10 @@ export function createNativeRegistry(config: RegistryConfig = {}): ToolRegistry 
 	);
 
 	if (config.browserbaseApiKey) {
-		const browserExecutors = createBrowserExecutors(config.browserbaseApiKey);
+		const browserExecutors = createBrowserExecutors(
+			config.browserbaseApiKey,
+			config.browserbaseProjectId,
+		);
 		registry.register(
 			"browser_create_session",
 			browserCreateSessionDefinition,

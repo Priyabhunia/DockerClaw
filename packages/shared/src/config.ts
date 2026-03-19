@@ -67,6 +67,8 @@ const envSchema = z
 		THREAD_LOCK_TIMEOUT_MS: z.coerce.number().int().min(10_000).default(300_000),
 		GITHUB_TOKEN: z.string().optional(),
 		BROWSERBASE_API_KEY: z.string().optional(),
+		BROWSERBASE_PROJECT_ID: z.string().optional(),
+		LINKUP_API_KEY: z.string().optional(),
 		CONTEXT7_BASE_URL: z.string().url().optional(),
 		SEARCH_API_KEY: z.string().optional(),
 		IMAGEN_API_KEY: z.string().optional(),

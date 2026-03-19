@@ -7,6 +7,17 @@ interface SearchResultItem {
 	url: string;
 }
 
+type LinkupSource = {
+	name?: string;
+	url?: string;
+	snippet?: string;
+};
+
+type LinkupResponse = {
+	answer?: string;
+	sources?: LinkupSource[];
+};
+
 export const quickAiSearchDefinition: LLMToolDefinition = {
 	name: "quick_ai_search",
 	description: "Search the web and optionally summarize results with an LLM.",
@@ -23,6 +34,7 @@ export const quickAiSearchDefinition: LLMToolDefinition = {
 };
 
 export function createQuickAiSearchExecutor(opts: {
+	linkupApiKey?: string;
 	searchApiKey?: string;
 	llmProvider?: LLMProvider;
 	model?: string;
@@ -35,14 +47,27 @@ export function createQuickAiSearchExecutor(opts: {
 				return { output: null, durationMs: 0, error: "search_question is required" };
 			}
 
-			if (!opts.searchApiKey) {
+			if (opts.linkupApiKey) {
+				const linkupResponse = await linkupSearch(args.search_question, opts.linkupApiKey);
 				return {
 					output: {
-						search_response: `Web search not configured. Set SEARCH_API_KEY to enable live search. Cannot answer: ${args.search_question}`,
+						search_response: formatLinkupResponse(linkupResponse),
 					},
 					durationMs: 0,
 				};
 			}
+
+			if (!opts.searchApiKey) {
+				return {
+					output: {
+						search_response:
+							`Web search not configured. Set LINKUP_API_KEY or SEARCH_API_KEY ` +
+							`to enable live search. Cannot answer: ${args.search_question}`,
+					},
+					durationMs: 0,
+				};
+			}
+
 			const results = await braveSearch(args.search_question, opts.searchApiKey);
 			if (results.length === 0) {
 				return {
@@ -75,6 +100,28 @@ export function createQuickAiSearchExecutor(opts: {
 			};
 		}
 	};
+}
+
+async function linkupSearch(question: string, apiKey: string): Promise<LinkupResponse> {
+	const response = await fetch("https://api.linkup.so/v1/search", {
+		method: "POST",
+		headers: {
+			"content-type": "application/json",
+			authorization: `Bearer ${apiKey}`,
+		},
+		body: JSON.stringify({
+			query: question,
+			depth: "standard",
+			outputType: "sourcedAnswer",
+			includeImages: false,
+		}),
+	});
+
+	if (!response.ok) {
+		throw new Error(`Linkup search failed: ${response.status} ${response.statusText}`);
+	}
+
+	return (await response.json()) as LinkupResponse;
 }
 
 async function braveSearch(question: string, apiKey: string): Promise<SearchResultItem[]> {
@@ -131,6 +178,24 @@ function formatResults(results: SearchResultItem[]): string {
 	return results
 		.map((item, index) => `${index + 1}. ${item.title}\n${item.description}\n${item.url}`)
 		.join("\n\n");
+}
+
+function formatLinkupResponse(response: LinkupResponse): string {
+	const answer = response.answer?.trim() || "No answer returned.";
+	const sources = (response.sources ?? [])
+		.filter((source) => source.url || source.name)
+		.map((source, index) => {
+			const title = source.name?.trim() || `Source ${index + 1}`;
+			const url = source.url?.trim() || "";
+			const snippet = source.snippet?.trim() || "";
+			return `${index + 1}. ${title}${url ? `\n${url}` : ""}${snippet ? `\n${snippet}` : ""}`;
+		});
+
+	if (sources.length === 0) {
+		return answer;
+	}
+
+	return `${answer}\n\nSources:\n${sources.join("\n\n")}`;
 }
 
 function getTextFromResponse(content: unknown): string {
